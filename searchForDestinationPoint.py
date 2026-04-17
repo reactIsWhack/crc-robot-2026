@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import math
+from newMotors import moveRobotLeft, moveRobotRight, moveRobotFwdOrBwd
+print("imported search for destination point")
 
 def rfind(l,target):
     try:
@@ -137,7 +139,7 @@ def determineDestinationPoint(avg_pixels, robot_pos, robot_orientation, display_
 
         angle = calcAngleWithHorizontal(robot_pos, pixel, display_img)
         diff = abs(angle - robot_orientation)
-        print(pixel, angle, diff)
+        # print(pixel, angle, diff)
         if diff < min_diff:
             destination_pxl = pixel
             min_diff = diff
@@ -145,9 +147,21 @@ def determineDestinationPoint(avg_pixels, robot_pos, robot_orientation, display_
     
     cv2.line(display_img, robot_pos, destination_pxl, (0,0,255), 10)
     cv2.putText(display_img, str(destination_angle)[0:6]+" deg", (robot_pos[0]+45, robot_pos[1]-70), cv2.FONT_HERSHEY_SIMPLEX, 1.25, (128,0,128), 5, cv2.LINE_AA)
-    return destination_pxl
+    return (destination_pxl, destination_angle)
 
-def moveToDestinationPoint(angle_desired, robot_orientation):
-    rot = -0.2 if angle_desired > robot_orientation else 0.2
+def moveToDestinationPoint(rotation_angle):
+    direction = 'right' if rotation_angle < 90 or rotation_angle > 270 else 'left'
+
+    error = 25
+    if rotation_angle < 90 - error or rotation_angle > 90 + error:
+        # keep rotating the robot
+        if direction == 'right':
+            moveRobotRight()
+        else:
+            moveRobotLeft()
+    else:
+        moveRobotFwdOrBwd("fwd")
+    
+        
      
     
