@@ -99,24 +99,23 @@ def moveBR(speed, direction):
 
     pwmBR.value = speed/100
 
-movement_speed = 45    
-def moveRobotFwdOrBwd(direction):
-    moveFL(movement_speed,direction)
-    moveFR(movement_speed,direction)
-    moveBL(movement_speed,direction)
-    moveBR(movement_speed,direction)
+def moveRobotFwdOrBwd(speed, direction):
+    moveFL(speed,direction)
+    moveFR(speed,direction)
+    moveBL(speed,direction)
+    moveBR(speed,direction)
 
-def moveRobotRight():
-    moveFL(movement_speed,"fwd")
-    moveFR(movement_speed,"bwd")
-    moveBL(movement_speed,"fwd")
-    moveBR(movement_speed,"bwd")
+def moveRobotRight(speed):
+    moveFL(speed,"fwd")
+    moveFR(speed,"bwd")
+    moveBL(speed,"fwd")
+    moveBR(speed,"bwd")
 
-def moveRobotLeft():
-    moveFL(movement_speed,"bwd")
-    moveBL(movement_speed,"bwd")
-    moveFR(movement_speed,"fwd")
-    moveBR(movement_speed,"fwd")
+def moveRobotLeft(speed):
+    moveFL(speed,"bwd")
+    moveBL(speed,"bwd")
+    moveFR(speed,"fwd")
+    moveBR(speed,"fwd")
 
 def stopRobot():
     moveFL(0,"stop")

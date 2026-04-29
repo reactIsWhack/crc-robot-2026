@@ -5,7 +5,7 @@ import time
 pixel_pin = board.D21
 num_pixels = 8
 
-pixels = neopixel.NeoPixel(pixel_pin, num_pixels, brightness=0.5)
+pixels = neopixel.NeoPixel(pixel_pin, num_pixels, brightness=1)
 
 def turnLedOn(red, green, blue):
     for i in range(0, num_pixels):
