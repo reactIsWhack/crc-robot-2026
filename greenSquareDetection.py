@@ -3,7 +3,7 @@ import cv2
 from collections import deque
 import math
 import time
-from utilities import atImageBoundrary, checkInRange, calcAngleWithHorizontal, calcEuclidianDist
+from utilities import atImageBoundrary, checkInRange, calcAngleWithHorizontal, calcEuclidianDist, calcAvg
 
 colors = [(255,0,0), (0,75,150), (0,165,255),(0,0,0)]
 distance = 5
@@ -54,7 +54,7 @@ def organizeGreenSquarePoints(mask, green_pixels, frame, h ,w):
     #         cv2.circle(frame, (pxl[1], pxl[0]), 2, colors[i%4], -1)
     return square_groups
 
-def determineFwdAngle(square_group, frame, edges):
+def findLineSlopes(frame, edges):
     '''
     1. for each green square, find the slope of the two black lines surrounding it (edge detection on mask to identify boundraries where mask changes b/w white and then HoughLines to get the line segments)
     Sort the slopes of the line segments and split the list when there is a large change. then, get the averages of each of the two lists, giving us two slopes for the two lines. 
@@ -88,11 +88,91 @@ def determineFwdAngle(square_group, frame, edges):
             slope_a = slopes[0:i]
             slope_b = slopes[i+1:]
             break
-    print(slope_a, slope_b)
-        
+    avg_slope_a = calcAvg(slope_a)
+    avg_slope_b = calcAvg(slope_b)
+    return (avg_slope_a, avg_slope_b)
 
-def findLineDirection(square_groups, frame, edges):
-   
+def exploreLineToRight(slope, centroid, frame_binary, w, h):
+    cx, cy = centroid
+    cy = cy * -1
+    for x in range(cx, w, 3):
+        y = abs(slope * (x - cx) + cy)
+        if not checkInRange(0, h-1, y):
+            return None
+        
+        pixel = frame_binary[y][x]
+        if pixel == 0:
+            return (x,y) # return coordinates of where black was found
+    return None
+
+def exploreLineToLeft(slope, centroid, frame_binary, h):
+    cx, cy = centroid
+    centroid *= -1
+    for x in range(cx, 0, -3):
+        y = abs(slope * (x - cx) + cy)
+        if not checkInRange(0, h-1, y):
+            return None
+        
+        if frame_binary[y][x] == 0:
+            return (x, y) # return coordinates of where black was found
+    return None
+
+def identifyGreenSquarePos(point, centroid):
+    x, y = point
+    cx, cy = centroid
+    '''
+    If black spotted above centroid (smaller y) and tiny change in x = bottom green square. 
+    If black spotted below centroid (greater y) and tiny change in x = top green square. 
+    If black spotted right of centroid (greater x) and tiny change in y = left green square. 
+    If black to left of centroid (smaller x) and tiny change in y = right green square
+    
+    '''
+    change_threshold = 35
+    x_change = abs(x - cx)
+    y_change = abs(y - cy)
+    if y < cy and x_change < change_threshold:
+        return "bottom"
+    elif y > cy and x_change < change_threshold:
+        return "top"
+    elif x > cx and y_change < change_threshold:
+        return "left"
+    elif x < cx and y_change < change_threshold:
+        return "right"
+
+def exploreGreenSquare(centroid, slope_a, slope_b, frame_binary, width, height):
+    pt_1 = exploreLineToRight(slope_a, centroid, frame_binary, width, height)
+    pt_2 = exploreLineToLeft(slope_a, centroid, frame_binary, height)
+    pt_3 = exploreLineToRight(slope_b, centroid, frame_binary, width, height)
+    pt_4 = exploreLineToLeft(slope_b, centroid, frame_binary, height)
+    points = [pt_1, pt_2, pt_3, pt_4]
+    # top, bottom, left, right
+    positions = []
+    position_dict = {["top","left"]: "TL", ["top","right"]: "TR", ["bottom", "right"]: "BR", ["bottom", "left"]: "BL"}
+    horizontal_axis_angles = []
+    vertical_axis_angles = []
+
+    # check each point
+    for pt in points:
+        if pt is None:
+            continue
+        greenSquarePos = identifyGreenSquarePos(pt, centroid)
+        positions.append(greenSquarePos)
+        if greenSquarePos == "top" or greenSquarePos == "bottom":
+            # fwd/bwd axis
+            final_pt = (centroid[0] + 1, abs(-centroid[1])+slope_a)
+            angle = calcAngleWithHorizontal(centroid, final_pt)
+            vertical_axis_angles.append(angle)
+        if greenSquarePos == "left" or greenSquarePos == "right":
+            # left/right axis
+            final_pt = (centroid[0] + 1, abs(-centroid[1])+slope_b)
+            angle = calcAngleWithHorizontal(centroid, final_pt)
+            horizontal_axis_angles.append(angle)
+            
+    avg_horizontal_angle = calcAvg(horizontal_axis_angles)
+    avg_vertical_angle = calcAvg(vertical_axis_angles)
+    position = position_dict[positions]
+    return (position, avg_horizontal_angle, avg_vertical_angle)
+            
 
 def computeCentroids(square_groups, frame):
     centroids = []
@@ -153,47 +233,27 @@ def moveLeft(initial_coords, angle, leftDone, w, h, frame):
         # cv2.circle(frame, final_coords, 10, (255,255,255), -1)
     return (final_coords[0], final_coords[1], leftDone)
 
-def identifyGreenSquarePosition(centroid, lineDirection, binary_frame, w, h, frame):
-    leftDone = rightDone = fwdDone = bwdDone = False
-    lpos_x = rpos_x = fpos_x = bpos_x = centroid[0]
-    lpos_y = rpos_y = fpos_y = bpos_y = centroid[1]
-    bwd = fwd = left = right = False
-    while not leftDone or not rightDone or not fwdDone or not bwdDone:
-        fpos_x, fpos_y, fwdDone = moveFwd((fpos_x, fpos_y), math.radians(lineDirection),fwdDone, w, h, frame)
-        bpos_x, bpos_y, bwdDone = moveBwd((bpos_x, bpos_y), math.radians(lineDirection),bwdDone, w, h, frame)
-        lpos_x, lpos_y, leftDone = moveLeft((lpos_x, lpos_y), math.radians(90-lineDirection),leftDone, w, h, frame)
-        rpos_x, rpos_y, rightDone = moveRight((rpos_x, rpos_y), math.radians(90-lineDirection),rightDone, w, h, frame)
-        if not fwdDone and binary_frame[fpos_y][fpos_x] == 0:
-            fwd = True
-            fwdDone = True
-        if not bwdDone and binary_frame[bpos_y][bpos_x] == 0:
-            bwd = True
-            bwdDone = True
-        if not leftDone and binary_frame[lpos_y][lpos_x] == 0:
-            left = leftDone = True
-        if not rightDone and binary_frame[rpos_y][rpos_x] == 0:
-            right = rightDone = True
-    # left, right, fwd, bwd
-    boolean = (left, right, fwd, bwd)
-    boolean_to_pos = {(True, False, True, False):"BR",
-                     (True, False, False, True):"TR",
-                     (False, True, True, False):"BL",
-                     (False, True, False, True):"TL"
-                     }
-    if boolean in boolean_to_pos.keys():
-        return boolean_to_pos[boolean]
-    else:
-        return None
-
-def processGreenSquares(centroids, lineDirection, mask, w, h, frame):
-    greenSquareStates = {
-        "BR": None,
-        "BL": None,
-        "TR": None,
-        "TL": None
-    }
+def processGreenSquares(centroids, slope_a, slope_b, frame_binary, w, h):
+    green_squares_present = {"TL": False, "TR": False, "BR": False, "BL": False}
+    horizontal_angles = []
+    vertical_angles = []
     for centroid in centroids:
-        centroid_type = identifyGreenSquarePosition(centroid, lineDirection, mask, w, h, frame)
-        if centroid_type is not None:
-            greenSquareStates[centroid_type] = centroid
-    print(greenSquareStates)
+        position, horizontal_angle, vertical_angle = exploreGreenSquare(centroid, slope_a, slope_b, frame_binary, w, h)
+        green_squares_present[position] = True
+        if horizontal_angle != 0:
+            horizontal_angles.append(horizontal_angle)
+        if vertical_angle != 0:
+            vertical_angles.append(vertical_angle)
+    horizontal_angle = calcAvg(horizontal_angles)
+    vertical_angle = calcAvg(vertical_angles)
+    
+    if green_squares_present["BL"] and green_squares_present["BR"]:
+        # U-Turn
+        return "U-turn"
+    elif green_squares_present["BL"] and not green_squares_present["BR"]:
+        # go to green
+        return "BL-square"
+    elif not green_squares_present["BL"] and green_squares_present["BR"]:
+        return "BR-square"
+    else:
+        return "normal"

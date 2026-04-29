@@ -7,7 +7,7 @@ import numpy as np
 from picamera2 import Picamera2
 import math
 import time
-from greenSquareDetection import organizeGreenSquarePoints, computeCentroids, processGreenSquares, findLineDirection
+from greenSquareDetection import organizeGreenSquarePoints, computeCentroids, processGreenSquares, findLineSlopes
 from searchForDestinationPoint import searchRows, searchCols, determineDestinationPoint, findOldPos, collectOuterIntervals
 from navigation import moveToDestinationPoint, findRobotPos, handleLostLine
 from ledRing import turnLedOn, turnLedOff
@@ -134,11 +134,8 @@ try:
         if greenPresent:
             square_groups = organizeGreenSquarePoints(mask, non_zero_pixels, frame, height, width)
             edges = cv2.Canny(mask, 100,200)
+            slope_a, slope_b = findLineSlopes(frame, edges)
             cv2.imshow("edges", edges)
-            lineDirection = findLineDirection(square_groups, frame, edges)
-            # if lineDirection is None:
-            #     continue
-            # print(f"line direction: {lineDirection}")
             # centroids = computeCentroids(square_groups, frame)
             # processGreenSquares(centroids, old_orientation, frame_binary, width, height, frame)
 

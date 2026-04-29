@@ -44,3 +44,12 @@ def calcAngleWithHorizontal(origin_pt, final_pt):
         angle += 360
 
     return angle
+
+def calcAvg(arr):
+    if len(arr) == 0:
+        return 0
+    
+    sum = 0
+    for item in arr:
+        sum += item
+    return sum / len(arr)
