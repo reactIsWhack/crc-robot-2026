@@ -2,7 +2,7 @@ from newMotors import moveFR, moveFL, moveBL, moveBR, moveRobotLeft, moveRobotRi
 from utilities import checkInRange
 from searchForDestinationPoint import collectOuterIntervals
 
-def moveToDestinationPoint(destination_angle, prev_destination_angle, base_speed, camera_x, line_x):
+def moveToDestinationPoint(destination_angle, line_follow_state, base_speed, camera_x, line_x):
     turn_error = 10
 
     # check if the robot needs to turn
@@ -14,10 +14,12 @@ def moveToDestinationPoint(destination_angle, prev_destination_angle, base_speed
             moveRobotLeft(base_speed)
     else:
         left_speed, right_speed = calcMotorSpeeds(camera_x, line_x, base_speed)
+        line_follow_state = "normal"
         moveFR(right_speed, "fwd")
         moveBR(right_speed, "fwd")
         moveFL(left_speed, "fwd")
         moveBL(left_speed, "fwd")
+    return line_follow_state
 
 def calcMotorSpeeds(camera_x, line_x, base_speed):
     # magnitude of error represents distance b/w camera and the line's center. 
