@@ -13,7 +13,6 @@ from newMotors import stopRobot
 from popup import Popup
 from utilities import drawCandidatePoints, getBinaryFrame, captureFrame, calcAngleWithHorizontal
 
-
 ##################################################################################
 # Initialization
 ##################################################################################
@@ -23,12 +22,10 @@ picam = Picamera2()
 config = picam.create_preview_configuration(main={"format":"RGB888"})
 picam.start()
 
-
 ### Initialize GUI ###
 calibrationGUI = Popup()
 calibrationGUI.createButtons()
 calibrationGUI.createRGBLabels()
-
 
 ##################################################################################
 # Variables
@@ -165,5 +162,3 @@ except KeyboardInterrupt:
     cleanup()
 finally:
     cleanup()
-
-        

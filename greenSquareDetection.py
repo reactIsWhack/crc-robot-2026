@@ -6,6 +6,7 @@ from utilities import atImageBoundrary, checkInRange, calcAngleWithHorizontal, c
 
 colors = [(255,0,0), (0,75,150), (0,165,255),(0,0,0)]
 distance = 5
+black_threshold = 25 # number of times we see have to see black before changing direction
 
 def organizeGreenSquarePoints(mask, green_pixels, frame, h ,w):
 
@@ -198,3 +199,63 @@ def updateStateOnGreenSquares(centroids, fwd_angle, mask, w, h, frame, lineFollo
     elif not greenSquareStates["BL"] and greenSquareStates["BR"] and lineFollowState == "normal":
         lineFollowState = "green-square-turnright"
     return greenSquareStates
+
+
+def moveIntoBlackRegion(dir, binary_frame, pos, fwd_angle, w, h, frame):
+    black_count = 0
+    while black_count < black_threshold:
+        x = y = done = 0
+        if dir == "fwd":
+            x, y, done = moveFwd(pos, fwd_angle, False, w, h, frame)
+        elif dir == "left":
+            x, y, done = moveLeft(pos, 90-fwd_angle, False, w, h, frame)
+        elif dir == "right":
+            x, y, done = moveRight(pos, 90-fwd_angle, False, w, h, frame)
+
+        if binary_frame[y][x] == 0:
+            black_count += 1
+        pos = (x,y)
+    return pos
+
+def moveUntilEdge(dir, pos, fwd_angle, w, h, frame):
+    done = False
+    while not done:
+        x = y = 0
+        if dir == "fwd":
+            x, y, done = moveFwd(pos, fwd_angle, False, w, h, frame)
+        elif dir == "left":
+            x, y, done = moveLeft(pos, 90-fwd_angle, False, w, h, frame)
+        elif dir == "right":
+            x, y, done = moveRight(pos, 90-fwd_angle, False, w, h, frame)
+        pos = (x, y)
+    return pos
+
+def handleLeftTurn(greenSquareStates, fwd_angle, w, h, frame, binary_frame):
+    destination = None
+    
+    if greenSquareStates["BL"]:
+        # first move forward
+        pos = moveIntoBlackRegion("fwd", binary_frame, greenSquareStates["BL"], fwd_angle, w, h, frame)
+        # move left until at edge of image
+        destination = moveUntilEdge("left", pos, fwd_angle, w, h, frame)
+    elif greenSquareStates["TL"]:
+        # first move right
+        pos = moveIntoBlackRegion("right", binary_frame, greenSquareStates["TL"], fwd_angle, w, h, frame)
+        # move fwd until at edge of image
+        destination = moveUntilEdge("fwd", pos, fwd_angle, w, h, frame)
+    return destination
+
+def handleRightTurn(greenSquareStates, fwd_angle, w, h, frame, binary_frame):
+    destination = None
+    
+    if greenSquareStates["BR"]:
+        # first move forward
+        pos = moveIntoBlackRegion("fwd", binary_frame, greenSquareStates["BR"], fwd_angle, w, h, frame)
+        # move right until at edge of image
+        destination = moveUntilEdge("right", pos, fwd_angle, w, h, frame)
+    elif greenSquareStates["TL"]:
+        # first move left
+        pos = moveIntoBlackRegion("left", binary_frame, greenSquareStates["TL"], fwd_angle, w, h, frame)
+        # move fwd until at edge of image
+        destination = moveUntilEdge("fwd", pos, fwd_angle, w, h, frame, binary_frame)
+    return destination

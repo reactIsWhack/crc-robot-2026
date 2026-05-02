@@ -1,4 +1,3 @@
-
 ### Imports ###
 
 import cv2
@@ -86,88 +85,6 @@ def searchCols(bin_img, col, height):
             intervals.append(interval)
             start = None
     return intervals
-
-def mergeMergedIntervals(mergedIntervals, width, height):
-    newMergedIntervals = []
-    isMerged = {"TL":False, "TR":False, "BL":False, "BR":False} # track which merged intervals have been merged or not
-    for i in range(len(mergedIntervals)):
-        intervalA = mergedIntervals[i]
-        for j in range(i + 1, len(mergedIntervals)):
-            intervalB = mergedIntervals[j]
-            newInterval = None
-            if intervalA.type == "BL" and intervalB.type == "BR":
-                newInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=width//2, midpoint_y=height-1, length=intervalA.length+intervalB.length,type="BL-BR")
-                isMerged["BL"] = True
-                isMerged["BR"] = True
-            elif intervalA.type == "BL" and intervalB.type == "TL":
-                newInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=0, midpoint_y=height//2, length=intervalA.length+intervalB.length,type="BL-TL")
-                isMerged["BL"] = True
-                isMerged["TL"] = True
-            elif intervalA.type == "TR" and intervalB.type == "BR":
-                newInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=width-1, midpoint_y=height//2, length=intervalA.length+intervalB.length,type="BR-TR")
-                isMerged["TR"] = True
-                isMerged["BR"] = True
-            elif intervalA.type == "TR" and intervalB.type == "TL":
-                newInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=width//2, midpoint_y=0, length=intervalA.length+intervalB.length,type="TR-TL")
-                isMerged["TR"] = True
-                isMerged["TL"] = True
-            if newInterval is not None:
-                newMergedIntervals.append(newInterval)
-    for key in isMerged.keys():
-        if isMerged[key]:
-            continue
-        # if the interval has not been merged, keep it the same
-        for interval in mergedIntervals:
-            if interval.type == key:
-                newMergedIntervals.append(interval)
-    return newMergedIntervals
-
-# Gets rid of adjacent intervals at corners
-def mergeCornerIntervals(intervals, width, height):
-    horizontalCornerIntervals = []
-    verticalCornerIntervals = []
-    merged = {}
-
-    for interval in intervals:
-        # check for vertical corner interval
-        if interval.end_x - interval.start_x == 0 and (interval.start_y == 0 or interval.end_y == height-1):
-            verticalCornerIntervals.append(interval)
-        # check for horizontal corner interval
-        if interval.end_y - interval.start_y == 0 and (interval.start_x == 0 or interval.end_x == width-1):
-            horizontalCornerIntervals.append(interval)
-
-        merged[interval] = False
-    
-    mergedIntervals = []
-    # for each horizontal corner interval, check all the vertical corner intervals to see if the two intersect
-    for horizontalCornerInterval in horizontalCornerIntervals:
-        for verticalCornerInterval in verticalCornerIntervals:
-            mergedInterval = None
-
-            if horizontalCornerInterval.start_x == 0 and horizontalCornerInterval.start_y == 0 and verticalCornerInterval.start_x == 0 and verticalCornerInterval.start_y == 0:
-                # top left intersection
-                mergedInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=0, midpoint_y=0, length=horizontalCornerInterval.length+verticalCornerInterval.length,type="TL")
-            elif horizontalCornerInterval.start_x == 0 and horizontalCornerInterval.start_y == height-1 and verticalCornerInterval.end_x == 0 and verticalCornerInterval.end_y == height-1:  
-                # bottom left intersection
-                mergedInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=0, midpoint_y=height-1, length=horizontalCornerInterval.length+verticalCornerInterval.length,type="BL")
-            elif horizontalCornerInterval.end_x == width-1 and horizontalCornerInterval.end_y == 0 and verticalCornerInterval.start_x == width-1 and verticalCornerInterval.start_y == 0:
-                # top right intersection
-                mergedInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=width-1, midpoint_y=0, length=horizontalCornerInterval.length+verticalCornerInterval.length,type="TR")
-            elif horizontalCornerInterval.end_x == width-1 and horizontalCornerInterval.end_y == height - 1 and verticalCornerInterval.end_x == width-1 and verticalCornerInterval.end_y==height-1:
-                # bottom right intersection
-                mergedInterval = Interval(start_x=-1, end_x=-1, start_y=-1, end_y=-1, midpoint_x=width-1, midpoint_y=height-1, length=horizontalCornerInterval.length+verticalCornerInterval.length,type="BR")
-            
-            if mergedInterval is not None:
-                mergedIntervals.append(mergedInterval)
-                merged[horizontalCornerInterval] = True
-                merged[verticalCornerInterval] = True
-    new_intervals = []
-    for interval in merged.keys():
-        if not merged[interval]:
-            new_intervals.append(interval)
-    new_intervals.extend(mergedIntervals)
-    return new_intervals
-
 
 def findOldPos(intervals, prev_old_pos):
     p_old_x = prev_old_pos[0]
