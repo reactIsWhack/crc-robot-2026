@@ -53,3 +53,12 @@ def calcAvg(arr):
     for item in arr:
         sum += item
     return sum / len(arr)
+
+def calcSlope(x1, y1, x2, y2):
+    x_change = x2 - x1
+    y_change = y2 - y1
+    
+    if x_change == 0:
+        return 100 # vertical line
+    else:
+        return y_change / x_change

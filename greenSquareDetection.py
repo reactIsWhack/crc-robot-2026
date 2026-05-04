@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from collections import deque
 import math
-from utilities import atImageBoundrary, checkInRange, calcAngleWithHorizontal, calcEuclidianDist, calcAvg
+from utilities import atImageBoundrary, checkInRange, calcAngleWithHorizontal, calcEuclidianDist, calcAvg, calcSlope
 
 colors = [(255,0,0), (0,75,150), (0,165,255),(0,0,0)]
 distance = 5
@@ -58,40 +58,117 @@ def findGreenSquareLines(frame, edges):
     '''
     find the endpoints of the lines that surround the green squares using edge detection and houghlines
     '''
-    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=50, minLineLength=30, maxLineGap=10)
+    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=40, minLineLength=20, maxLineGap=40)
     green_square_lines = []
     for line in lines:
         # line = [[x1, y1, x2, y2]]
         x1, y1, x2, y2 = line[0]
         green_line_data = (x1, -y1, x2, -y2)
         green_square_lines.append(green_line_data)
-        cv2.line(frame, (x1, y1), (x2, y2), (0,75,150),10)
-    return green_square_lines
+
+    print("green square lines before")
+    for line in green_square_lines:
+        x1, y1, x2, y2 = line
+        slope_a = calcSlope(x1, y1, x2, y2)
+        y_intercept_a = -slope_a*x1 + y1
+        print(f"slope={slope_a}, y-intercept={y_intercept_a}")
+        
+    # remove lines that are overlapping 
+    indexes_to_skip = set()
+    new_green_square_lines = []
+
+    for i in range(len(green_square_lines)):
+        if i in indexes_to_skip:
+            continue
+
+        x1, y1, x2, y2 = green_square_lines[i]
+        midpoint_a = ((x1+x2)/2, (y1+y2)/2)
+        slope_a = calcSlope(x1, y1, x2, y2)
+        y_intercept_a = -slope_a*x1 + y1
+
+        for j in range(i + 1, len(green_square_lines)):
+            if j in indexes_to_skip:
+                continue
+
+            x1b, y1b, x2b, y2b = green_square_lines[j]
+            midpoint_b = ((x1b+x2b)/2, (y1b+y2b)/2)
+            slope_b = calcSlope(x1b, y1b, x2b, y2b)
+            y_intercept_b = -slope_b*x1b + y1b
+
+            error_slope = 1.1
+            error_intercept = 100
+            dist_err = 100
+
+            if (
+                calcEuclidianDist(midpoint_a, midpoint_b) < dist_err
+                and checkInRange(slope_a-error_slope, slope_a+error_slope, slope_b)
+                and checkInRange(y_intercept_a-error_intercept, y_intercept_a+error_intercept, y_intercept_b)
+            ):
+                indexes_to_skip.add(j)
+
+        new_green_square_lines.append(green_square_lines[i])
+    
+    print("green square lines after")
+    for line in new_green_square_lines:
+        x1, y1, x2, y2 = line
+        slope_a = calcSlope(x1, y1, x2, y2)
+        y_intercept_a = -slope_a*x1 + y1
+        cv2.line(frame, (x1, -y1), (x2, -y2), (0,75,150),10)
+        print(f"slope={slope_a}, y-intercept={y_intercept_a}")
+    # return a list of the endpoints of each line that borders a green square
+    return new_green_square_lines
+
+def solveFwdCandidates(candidate_angles):
+    candidate_angles.sort()
+    print(f"candidate angles: {candidate_angles}")
+    angle_change_threshold = 30
+
+    for i in range(1, len(candidate_angles)):
+        curr_angle = candidate_angles[i]
+        prev_angle = candidate_angles[i - 1]
+        if abs(curr_angle - prev_angle) > angle_change_threshold:
+            first_half_len = i # 0 --> i - 1
+            second_half_len = len(candidate_angles) - i # i --> len(candidate_angles)-1 
+            candidate_angles = candidate_angles[0:i] if first_half_len > second_half_len else candidate_angles[i:] 
+            break
+    return calcAvg(candidate_angles)
 
 def findFwdAngle(green_square_lines, h, w, x_old):
     line_data = []
+    candidate_angles = []
+    
     for line in green_square_lines:
         x1, y1, x2, y2 = line
-        slope = (y2 - y1) / (x2 - x1)
-        y_val = -(h - 1) # bottom row
-        x_bottom = int(abs((y_val - y1 + slope * x1)/slope))
-        if x_bottom < 0 or x_bottom >= w:
+        x_change = x2 - x1
+        y_change = y2 - y1
+        
+        if x_change==0:
+            candidate_angles.append(90)
             continue
-        dist_to_oldpos = abs(x_old - x_bottom)
-        line_data.append((dist_to_oldpos, x1, y1, x2, y2))
-    line_data = sorted(line_data)
-    x1 = line_data[0][1]
-    x2 = line_data[0][3]
-    y1 = -line_data[0][2] # change negative back to positive
-    y2 = -line_data[0][4]
+        else:
+            slope = y_change / x_change
+            y_val = -(h - 1) # bottom row
+            x_bottom = -1 if slope == 0 else int((y_val - y1 + slope * x1)/slope)
+            # print(f"slope={slope}, x_bottom={x_bottom}")
+                        
+        if x_bottom < 0 or x_bottom >= w:
+            # print("Out of bounds")
+            continue
 
-    origin_pt = (x1, y1)
-    final_pt = (x2, y2)
-    if y2 < y1:
-        temp = final_pt
-        final_pt = origin_pt
-        origin_pt = temp
-    return calcAngleWithHorizontal(origin_pt, final_pt)
+        y1 = -y1
+        y2=-y2
+        origin_pt = (x1, y1)
+        final_pt = (x2, y2)
+        if y2 > y1:
+            temp = final_pt
+            final_pt = origin_pt
+            origin_pt = temp
+        angle = calcAngleWithHorizontal(origin_pt, final_pt)
+        # print(f"angle={angle}")
+        # print()
+        candidate_angles.append(angle)
+
+    return solveFwdCandidates(candidate_angles)
 
 def computeCentroids(square_groups, frame):
     centroids = []

@@ -115,8 +115,9 @@ try:
             edges = cv2.Canny(mask, 100,200)
             green_square_lines = findGreenSquareLines(frame, edges)
             fwd_angle = findFwdAngle(green_square_lines, height, width, old_pos[0])
-            centroids = computeCentroids(square_groups, frame)
-            line_follow_state = updateStateOnGreenSquares(centroids, fwd_angle, mask, width, height, frame, line_follow_state)
+            print(f"fwd angle: {fwd_angle}")
+            # centroids = computeCentroids(square_groups, frame)
+            # line_follow_state = updateStateOnGreenSquares(centroids, fwd_angle, mask, width, height, frame, line_follow_state)
             cv2.imshow("edges", edges)
         if line_follow_state == "normal":
             # Draw the line that represents which way the robot came from (old pos --> current robot pos)
@@ -131,7 +132,7 @@ try:
             for interval in intervals:
                 candidates.append((interval.midpoint_x, interval.midpoint_y))
 
-            cv2.circle(frame, old_pos, 20, (255,0,), -1)
+            cv2.circle(frame, old_pos, 20, (255,0,0), -1)
             drawCandidatePoints(frame, candidates)
             destination_pxl, destination_angle = determineDestinationPoint(candidates, robot_pos, old_orientation, frame, old_pos)
 
@@ -154,7 +155,7 @@ try:
         cv2.imshow("mask", mask) # Green square mask
         cv2.imshow("Robot Map", frame) # Original frame but with calculations
 
-        line_follow_state = moveToDestinationPoint(destination_angle, prev_destination_angle, base_speed, width//2, robot_pos[0])
+        # line_follow_state = moveToDestinationPoint(destination_angle, prev_destination_angle, base_speed, width//2, robot_pos[0])
         prev_destination_angle = destination_angle
         if cv2.waitKey(1) == ord('q'):
             break
