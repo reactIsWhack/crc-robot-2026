@@ -2,63 +2,50 @@ import numpy as np
 import cv2
 from collections import deque
 import math
-from utilities import atImageBoundrary, checkInRange, calcAngleWithHorizontal, calcEuclidianDist, calcAvg, calcSlope
+from tools.utilities import atImageBoundrary, checkInRange, calcAngleWithHorizontal, calcEuclidianDist, calcAvg, calcSlope
 
 colors = [(255,0,0), (0,75,150), (0,165,255),(0,0,0)]
 distance = 5
-black_threshold = 25 # number of times we see have to see black before changing direction
+black_threshold = 5 # number of times we see have to see black before changing direction
+max_dist_traveled = 250
 
-def organizeGreenSquarePoints(mask, green_pixels, frame, h ,w):
-
+def computeCentroids(mask):
+    # find the seperate blobs of white pixels on the green square mask. labels = blobs
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask)
     '''
-    run a BFS algorithm to find all pixels that belong
-    to a green square, and returns a 2D list containing
-    all pairs of points [x,y] that belong to the ith square
+    stats.shape = (num_labels, 5)
+    stats = [
+        bg -> [x (top left), y (top left), blob width, blob height, blob area]
+        label 1 -> [x (top left), y (top left), blob width, blob height, blob area]
+        label 2 -> [x (top left), y (top left), blob width, blob height, blob area]
+        ...
+    ]
+    centroids = [
+        bg --> [x,y]
+        label 1 --> [x,y]
+        label 2 --> [x,y]
+        ...
+    ]
+    total pixels = width * height
+    area = width * height = total pixels
     '''
+    green_sq_centroids = []
+    for i in range(1, num_labels):
+        total_pixels = stats[i][4] 
+        cx, cy = centroids[i]
 
-    visited = np.full((h, w), False, dtype=bool)
-    square_groups = []
-    cv2.imshow("mask", mask)
-
-    for pxl in green_pixels:
-        # first element is col, second element is row
-        row = pxl[0][1]
-        col = pxl[0][0]
-
-        # make pxl the start pxl, if not already visited
-        if not visited[row][col]:
-            group = [(row, col)]
-            visited[row][col] = True
-            q = deque()
-            q.append((row, col))
-
-            while len(q) > 0:
-                row, col = q[0]
-                neighbors = [(row,col-1), (row,col+1), (row+1,col),(row-1,col)]
-                for neighbor in neighbors:
-                    r, c = neighbor
-                    if r >= h or r < 0 or c >= w or c < 0:
-                        continue
-                    if not visited[r][c] and mask[r][c] == 255:
-                        visited[r][c] = True
-                        group.append((r, c))
-                        q.append((r, c))
-                q.popleft()
-            if len(group) > 2500:
-                square_groups.append(group)
-            # print(f"Num pixels in group: {len(group)}")
-
-    # print(f"Total # groups: {len(square_groups)}")
-    # for i, square_group in enumerate(square_groups):
-    #     for pxl in square_group:
-    #         cv2.circle(frame, (pxl[1], pxl[0]), 2, colors[i%4], -1)
-    return square_groups
+        if total_pixels > 10000:
+            green_sq_centroids.append((cx, cy))
+    return green_sq_centroids
 
 def findGreenSquareLines(frame, edges):
     '''
     find the endpoints of the lines that surround the green squares using edge detection and houghlines
     '''
-    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=40, minLineLength=20, maxLineGap=40)
+    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=40, minLineLength=30, maxLineGap=40)
+    if lines is None:
+        return []
+    
     green_square_lines = []
     for line in lines:
         # line = [[x1, y1, x2, y2]]
@@ -66,61 +53,60 @@ def findGreenSquareLines(frame, edges):
         green_line_data = (x1, -y1, x2, -y2)
         green_square_lines.append(green_line_data)
 
-    print("green square lines before")
-    for line in green_square_lines:
-        x1, y1, x2, y2 = line
-        slope_a = calcSlope(x1, y1, x2, y2)
-        y_intercept_a = -slope_a*x1 + y1
-        print(f"slope={slope_a}, y-intercept={y_intercept_a}")
+    # print("green square lines before")
+    # for line in green_square_lines:
+    #     x1, y1, x2, y2 = line
+    #     slope_a = calcSlope(x1, y1, x2, y2)
+    #     y_intercept_a = -slope_a*x1 + y1
+    #     print(f"slope={slope_a}, y-intercept={y_intercept_a}")
         
     # remove lines that are overlapping 
-    indexes_to_skip = set()
-    new_green_square_lines = []
+    # indexes_to_skip = set()
+    # new_green_square_lines = []
 
-    for i in range(len(green_square_lines)):
-        if i in indexes_to_skip:
-            continue
+    # for i in range(len(green_square_lines)):
+    #     if i in indexes_to_skip:
+    #         continue
 
-        x1, y1, x2, y2 = green_square_lines[i]
-        midpoint_a = ((x1+x2)/2, (y1+y2)/2)
-        slope_a = calcSlope(x1, y1, x2, y2)
-        y_intercept_a = -slope_a*x1 + y1
+    #     x1, y1, x2, y2 = green_square_lines[i]
+    #     midpoint_a = ((x1+x2)/2, (y1+y2)/2)
+    #     slope_a = calcSlope(x1, y1, x2, y2)
+    #     y_intercept_a = -slope_a*x1 + y1
 
-        for j in range(i + 1, len(green_square_lines)):
-            if j in indexes_to_skip:
-                continue
+    #     for j in range(i + 1, len(green_square_lines)):
+    #         if j in indexes_to_skip:
+    #             continue
 
-            x1b, y1b, x2b, y2b = green_square_lines[j]
-            midpoint_b = ((x1b+x2b)/2, (y1b+y2b)/2)
-            slope_b = calcSlope(x1b, y1b, x2b, y2b)
-            y_intercept_b = -slope_b*x1b + y1b
+    #         x1b, y1b, x2b, y2b = green_square_lines[j]
+    #         midpoint_b = ((x1b+x2b)/2, (y1b+y2b)/2)
+    #         slope_b = calcSlope(x1b, y1b, x2b, y2b)
+    #         y_intercept_b = -slope_b*x1b + y1b
 
-            error_slope = 1.1
-            error_intercept = 100
-            dist_err = 100
+    #         error_slope = 1.1
+    #         error_intercept = 100
+    #         dist_err = 100
 
-            if (
-                calcEuclidianDist(midpoint_a, midpoint_b) < dist_err
-                and checkInRange(slope_a-error_slope, slope_a+error_slope, slope_b)
-                and checkInRange(y_intercept_a-error_intercept, y_intercept_a+error_intercept, y_intercept_b)
-            ):
-                indexes_to_skip.add(j)
+    #         if (
+    #             calcEuclidianDist(midpoint_a, midpoint_b) < dist_err
+    #             and checkInRange(slope_a-error_slope, slope_a+error_slope, slope_b)
+    #             and checkInRange(y_intercept_a-error_intercept, y_intercept_a+error_intercept, y_intercept_b)
+    #         ):
+    #             indexes_to_skip.add(j)
 
-        new_green_square_lines.append(green_square_lines[i])
+    #     new_green_square_lines.append(green_square_lines[i])
     
-    print("green square lines after")
-    for line in new_green_square_lines:
-        x1, y1, x2, y2 = line
-        slope_a = calcSlope(x1, y1, x2, y2)
-        y_intercept_a = -slope_a*x1 + y1
-        cv2.line(frame, (x1, -y1), (x2, -y2), (0,75,150),10)
-        print(f"slope={slope_a}, y-intercept={y_intercept_a}")
+    # print("green square lines after")
+    # for line in new_green_square_lines:
+    #     x1, y1, x2, y2 = line
+    #     slope_a = calcSlope(x1, y1, x2, y2)
+    #     y_intercept_a = -slope_a*x1 + y1
+    #     cv2.line(frame, (x1, -y1), (x2, -y2), (0,75,150),10)
+        # print(f"slope={slope_a}, y-intercept={y_intercept_a}")
     # return a list of the endpoints of each line that borders a green square
-    return new_green_square_lines
+    return green_square_lines
 
 def solveFwdCandidates(candidate_angles):
     candidate_angles.sort()
-    print(f"candidate angles: {candidate_angles}")
     angle_change_threshold = 30
 
     for i in range(1, len(candidate_angles)):
@@ -170,20 +156,6 @@ def findFwdAngle(green_square_lines, h, w, x_old):
 
     return solveFwdCandidates(candidate_angles)
 
-def computeCentroids(square_groups, frame):
-    centroids = []
-    for i, square_group in enumerate(square_groups):
-        r_sum = c_sum = 0
-        for pixel in square_group:
-            r_sum += pixel[0]
-            c_sum += pixel[1]
-            
-        centroid_row = int(r_sum / len(square_group))
-        centroid_col = int(c_sum / len(square_group))
-        cv2.circle(frame, (centroid_col, centroid_row), 18, colors[i], -1)
-        centroids.append((centroid_col, centroid_row))
-    return centroids
-
 def moveFwd(initial_coords, angle, fwdDone, w, h, frame):
     distance_x = distance*math.cos(angle)
     distance_y = distance*math.sin(angle)
@@ -192,6 +164,7 @@ def moveFwd(initial_coords, angle, fwdDone, w, h, frame):
         fwdDone = True
     else:
         cv2.circle(frame, final_coords, 10, (0,0,255), -1)
+        pass
     
     return (final_coords[0], final_coords[1], fwdDone)
 
@@ -230,7 +203,8 @@ def identifyGreenSquarePosition(centroid, fwd_angle, binary_frame, w, h, frame):
     lpos_x = rpos_x = fpos_x = bpos_x = centroid[0]
     lpos_y = rpos_y = fpos_y = bpos_y = centroid[1]
     bwd = fwd = left = right = False
-    while not leftDone or not rightDone or not fwdDone or not bwdDone:
+    total_dist_traveled = 0
+    while (not leftDone or not rightDone or not fwdDone or not bwdDone) and total_dist_traveled < max_dist_traveled:
         fpos_x, fpos_y, fwdDone = moveFwd((fpos_x, fpos_y), math.radians(fwd_angle),fwdDone, w, h, frame)
         bpos_x, bpos_y, bwdDone = moveBwd((bpos_x, bpos_y), math.radians(fwd_angle),bwdDone, w, h, frame)
         lpos_x, lpos_y, leftDone = moveLeft((lpos_x, lpos_y), math.radians(90-fwd_angle),leftDone, w, h, frame)
@@ -245,19 +219,21 @@ def identifyGreenSquarePosition(centroid, fwd_angle, binary_frame, w, h, frame):
             left = leftDone = True
         if not rightDone and binary_frame[rpos_y][rpos_x] == 0:
             right = rightDone = True
+        total_dist_traveled += distance
     # left, right, fwd, bwd
     boolean = (left, right, fwd, bwd)
+    # print(f"left found={left}, right found={right}, top found={fwd}, bottom found={bwd}")
     boolean_to_pos = {(True, False, True, False):"BR",
                      (True, False, False, True):"TR",
                      (False, True, True, False):"BL",
                      (False, True, False, True):"TL"
                      }
+    position = None
     if boolean in boolean_to_pos.keys():
-        return boolean_to_pos[boolean]
-    else:
-        return None
+        position = boolean_to_pos[boolean]
+    return position
 
-def updateStateOnGreenSquares(centroids, fwd_angle, mask, w, h, frame, lineFollowState):
+def updateStateOnGreenSquares(centroids, fwd_angle, binary_frame, w, h, frame, lineFollowState, num_candidates):
     greenSquareStates = {
         "BR": False,
         "BL": False,
@@ -265,74 +241,52 @@ def updateStateOnGreenSquares(centroids, fwd_angle, mask, w, h, frame, lineFollo
         "TL": False
     }
     for centroid in centroids:
-        centroid_type = identifyGreenSquarePosition(centroid, fwd_angle, mask, w, h, frame)
+        centroid_type = identifyGreenSquarePosition(centroid, fwd_angle, binary_frame, w, h, frame)
+        # print(f"centroid type = {centroid_type}")
         if centroid_type is not None:
             greenSquareStates[centroid_type] = centroid
-    print(greenSquareStates)
+    # print(f"green square states={greenSquareStates}")
     if greenSquareStates["BL"] and greenSquareStates["BR"] and lineFollowState == "normal":
         lineFollowState = "U-turn"
-    elif greenSquareStates["BL"] and not greenSquareStates["BR"] and lineFollowState == "normal":
+    elif (greenSquareStates["BL"] or (lineFollowState == "green-square-turnleft" and greenSquareStates["TL"])) and num_candidates >= 2:
         lineFollowState = "green-square-turnleft"
-    elif not greenSquareStates["BL"] and greenSquareStates["BR"] and lineFollowState == "normal":
+    elif (greenSquareStates["BR"] or (lineFollowState == "green-square-turnright" and greenSquareStates["TR"])) and num_candidates >= 2:
         lineFollowState = "green-square-turnright"
-    return greenSquareStates
+    else:
+        lineFollowState = "regular-turn" if (lineFollowState == "green-square-turnleft" or lineFollowState == "green-square-turnright" or lineFollowState == "regular-turn") else "normal"
+    return greenSquareStates, lineFollowState
 
+def exploreImageBorderClockwise(old_pos_idx, candidates, image_border):
+    # search from old_pos to the end
+    destination_pxl = None
+    for i in range(old_pos_idx, len(image_border)):
+        pxl = image_border[i]
+        if pxl in candidates:
+            destination_pxl = pxl
+            break
+    if destination_pxl is None:
+        # search from 0 to the old pos
+        for i in range(0, old_pos_idx):
+            pxl = image_border[i]
+            if pxl in candidates:
+                destination_pxl = pxl
+                break
+    return destination_pxl
 
-def moveIntoBlackRegion(dir, binary_frame, pos, fwd_angle, w, h, frame):
-    black_count = 0
-    while black_count < black_threshold:
-        x = y = done = 0
-        if dir == "fwd":
-            x, y, done = moveFwd(pos, fwd_angle, False, w, h, frame)
-        elif dir == "left":
-            x, y, done = moveLeft(pos, 90-fwd_angle, False, w, h, frame)
-        elif dir == "right":
-            x, y, done = moveRight(pos, 90-fwd_angle, False, w, h, frame)
-
-        if binary_frame[y][x] == 0:
-            black_count += 1
-        pos = (x,y)
-    return pos
-
-def moveUntilEdge(dir, pos, fwd_angle, w, h, frame):
-    done = False
-    while not done:
-        x = y = 0
-        if dir == "fwd":
-            x, y, done = moveFwd(pos, fwd_angle, False, w, h, frame)
-        elif dir == "left":
-            x, y, done = moveLeft(pos, 90-fwd_angle, False, w, h, frame)
-        elif dir == "right":
-            x, y, done = moveRight(pos, 90-fwd_angle, False, w, h, frame)
-        pos = (x, y)
-    return pos
-
-def handleLeftTurn(greenSquareStates, fwd_angle, w, h, frame, binary_frame):
-    destination = None
-    
-    if greenSquareStates["BL"]:
-        # first move forward
-        pos = moveIntoBlackRegion("fwd", binary_frame, greenSquareStates["BL"], fwd_angle, w, h, frame)
-        # move left until at edge of image
-        destination = moveUntilEdge("left", pos, fwd_angle, w, h, frame)
-    elif greenSquareStates["TL"]:
-        # first move right
-        pos = moveIntoBlackRegion("right", binary_frame, greenSquareStates["TL"], fwd_angle, w, h, frame)
-        # move fwd until at edge of image
-        destination = moveUntilEdge("fwd", pos, fwd_angle, w, h, frame)
-    return destination
-
-def handleRightTurn(greenSquareStates, fwd_angle, w, h, frame, binary_frame):
-    destination = None
-    
-    if greenSquareStates["BR"]:
-        # first move forward
-        pos = moveIntoBlackRegion("fwd", binary_frame, greenSquareStates["BR"], fwd_angle, w, h, frame)
-        # move right until at edge of image
-        destination = moveUntilEdge("right", pos, fwd_angle, w, h, frame)
-    elif greenSquareStates["TL"]:
-        # first move left
-        pos = moveIntoBlackRegion("left", binary_frame, greenSquareStates["TL"], fwd_angle, w, h, frame)
-        # move fwd until at edge of image
-        destination = moveUntilEdge("fwd", pos, fwd_angle, w, h, frame, binary_frame)
-    return destination
+def exploreImageBorderCounterClockwise(old_pos_idx, candidates, image_border):
+    # search from old_pos to 0 
+    destination_pxl = None
+    for i in range(old_pos_idx, -1, -1):
+        pxl = image_border[i]
+        if pxl in candidates:
+            destination_pxl = pxl
+            break
+    # search from the end to the old pos
+    if destination_pxl is None:
+        # search from 0 to the old pos
+        for i in range(len(image_border)-1, old_pos_idx, -1):
+            pxl = image_border[i]
+            if pxl in candidates:
+                destination_pxl = pxl
+                break
+    return destination_pxl

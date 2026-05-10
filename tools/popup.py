@@ -1,5 +1,6 @@
 from tkinter import *
 import math
+import cv2
 
 # width = 800, height = 480 for monitor
 
@@ -30,10 +31,18 @@ class Popup:
         self.green_label = Label(self.window, text=f"g: {self.green}")
         self.blue_label = Label(self.window, text=f"b: {self.blue}")
 
-
         self.start_x = 10
         self.start_y = 10
         self.vertical_dist = 50
+
+        # BIG START BUTTON
+        self.startButton = Button(
+            self.window,
+            text="START",
+            font=("Arial", 24, "bold"),
+            bg="green",
+            fg="white",
+        )
     
     def decRed(self):
         self.red = max(0, self.red-self.changeAmnt)
@@ -70,6 +79,13 @@ class Popup:
         for i, button in enumerate(self.buttons):
             button.place(x=self.start_x + spacing * i, y=self.start_y, width=self.button_width, height=self.button_height)
 
+        # PLACE BIG START BUTTON IN CENTER
+        self.startButton.place(
+            x=self.window_width / 2 - 300,
+            y=self.window_height / 2 - 100,
+            width=400,
+            height=200
+        )
         self.coarseButton.place(x=(self.window_width/2 - self.button_width/2), y=self.start_y+self.vertical_dist)
         self.redDecButton.config(command=self.decRed)
         self.redIncButton.config(command=self.incRed)
@@ -78,6 +94,7 @@ class Popup:
         self.greenDecButton.config(command=self.decGreen)
         self.greenIncButton.config(command=self.incGreen)
         self.coarseButton.config(command=self.switchMode)
+        self.startButton.config(command=self.startLineFollowing)
     
     def createRGBLabels(self):
         text_spacing = 100
@@ -93,3 +110,9 @@ class Popup:
     
     def display_window(self):
         self.window.mainloop()
+
+    def startLineFollowing(self):
+        self.window.destroy()
+        cv2.destroyAllWindows()
+
+    

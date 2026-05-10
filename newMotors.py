@@ -5,34 +5,34 @@ from gpiozero.pins.lgpio import LGPIOFactory
 Device.pin_factory = LGPIOFactory()
 
 # left a corresponds to front left
-left_a1 = 20
-left_a2 = 16
+left_a1_pin = 20
+left_a2_pin = 16
 left_pwm_a = 12
 
 # left b corresponds to back left
-left_b1 = 26
-left_b2 = 19
+left_b1_pin = 26
+left_b2_pin = 19
 left_pwm_b = 6
 
 # right a corresponds to front right
-right_a1 = 24
-right_a2 = 25
+right_a1_pin = 24
+right_a2_pin = 25
 right_pwm_a = 23
 
 # right b corresponds to back right
-right_b1 = 11
-right_b2 = 9
-right_pwm_b = 22
+right_b1_pin = 5 #5 #9
+right_b2_pin = 13 #13 #11
+right_pwm_b = 17 #17 #22
 
-left_a1 = OutputDevice(20)
-left_a2 = OutputDevice(16)
-left_b1 = OutputDevice(26)
-left_b2 = OutputDevice(19)
+left_a1 = OutputDevice(left_a1_pin)
+left_a2 = OutputDevice(left_a2_pin)
+left_b1 = OutputDevice(left_b1_pin)
+left_b2 = OutputDevice(left_b2_pin)
 
-right_a1 = OutputDevice(24)
-right_a2 = OutputDevice(25)
-right_b1 = OutputDevice(11)
-right_b2 = OutputDevice(9)
+right_a1 = OutputDevice(right_a1_pin)
+right_a2 = OutputDevice(right_a2_pin)
+right_b1 = OutputDevice(right_b1_pin)
+right_b2 = OutputDevice(right_b2_pin)
 
 pwmBL = PWMOutputDevice(left_pwm_b)
 pwmBR = PWMOutputDevice(right_pwm_b)
@@ -113,8 +113,8 @@ def moveRobotRight(speed):
 
 def moveRobotLeft(speed):
     moveFL(speed,"bwd")
-    moveBL(speed,"bwd")
     moveFR(speed,"fwd")
+    moveBL(speed,"bwd")
     moveBR(speed,"fwd")
 
 def stopRobot():
@@ -122,25 +122,3 @@ def stopRobot():
     moveBL(0,"stop")
     moveFR(0,"stop")
     moveBR(0,"stop")
-
-# try:
-#     while True:
-#         w_pressed = keyboard.is_pressed('w')
-#         s_pressed = keyboard.is_pressed('s')
-#         a_pressed = keyboard.is_pressed('a')
-#         d_pressed = keyboard.is_pressed('d')
-        
-#         if not w_pressed and not s_pressed and not a_pressed and not d_pressed:
-#             stopRobot()
-            
-        
-#         if w_pressed:
-#             moveRobotFwdOrBwd("fwd")
-#         if s_pressed:
-#             moveRobotFwdOrBwd("bwd")
-#         if a_pressed:
-#             moveRobotLeft()
-#         if d_pressed:
-#             moveRobotRight()
-# finally:
-#     Device.pin_factory.close()

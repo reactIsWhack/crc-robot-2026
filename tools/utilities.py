@@ -62,3 +62,39 @@ def calcSlope(x1, y1, x2, y2):
         return 100 # vertical line
     else:
         return y_change / x_change
+
+def createOneIndexedBorder(w, h):
+    image_border = []
+
+    # add top row from left to right
+    for i in range(0, w):
+        image_border.append((i, 0))
+    # add right col from top to bottom
+    for i in range(1, h):
+        image_border.append((w-1, i))
+    # add bottom row from left to right
+    for i in range(w-2, -1, -1):
+        image_border.append((i, h-1))
+    # add left col from bottom to top
+    for i in range(h-2, 0, -1):
+        image_border.append((0, i))
+    return image_border
+
+def drawOnRobotMap(frame, robot_pos, destination_pxl, old_pos):
+    cv2.circle(frame, old_pos, 20, (255,0,0), -1) # draw old pos point
+    cv2.line(frame, old_pos, robot_pos, (255,0,0), 10) # draw orientation line
+    cv2.circle(frame, robot_pos, 18, (0,255,0), -1) # Draw robot
+    cv2.line(frame, robot_pos, destination_pxl, (0,0,255), 10) # draw line from line center to destination point
+    cv2.circle(frame, destination_pxl, 18, (255,102,255), -1) # Draw destination
+
+def getCandidates(intervals):
+    candidates = []
+    for interval in intervals:
+        candidates.append((interval.midpoint_x, interval.midpoint_y))
+    return candidates
+    
+def renderRobotMap(robotMap, window_name):
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.moveWindow(window_name, 0, 100)
+    cv2.imshow(window_name, robotMap) # Original frame but with calculations
+    cv2.waitKey(1)

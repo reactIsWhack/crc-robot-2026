@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import math
 from collections import namedtuple
-from utilities import calcAngleWithHorizontal
+from tools.utilities import calcAngleWithHorizontal
 
 ### Initialization
 Interval = namedtuple("Interval", ["start_x", "end_x", "start_y", "end_y", "midpoint_x", "midpoint_y", "length", "type"])
@@ -15,7 +15,7 @@ def printIntervals(intervals):
         print(f"start: ({interval.start_x}, {interval.start_y}), end: ({interval.end_x}, {interval.end_y}), midpoint: ({interval.midpoint_x}, {interval.midpoint_y}) len: {interval.length}")
     print()
 
-def collectOuterIntervals(bin_img, width, height, greenPresent):
+def collectOuterIntervals(bin_img, width, height):
     left_intervals = searchRows(bin_img, width, 0)  # Assuming we're looking at the top row
     right_intervals = searchRows(bin_img, width, height - 1)  # Assuming we're looking at the bottom row
     top_intervals = searchCols(bin_img, 0, height)  # Assuming we're looking at the left column
@@ -26,16 +26,13 @@ def collectOuterIntervals(bin_img, width, height, greenPresent):
     intervals.extend(right_intervals)
     intervals.extend(top_intervals)
     intervals.extend(bottom_intervals)
-    threshold = 75
+    threshold = 50
     # print("Initial Intervals")
     # printIntervals(intervals)
     new_intervals = []
     for interval in intervals:
         if interval.length > threshold:
             new_intervals.append(interval)
-
-    # if greenPresent:
-        # new_intervals = mergeCornerIntervals(new_intervals, width, height)
 
     # print("Final Intervals")
     # printIntervals(new_intervals)
@@ -86,32 +83,34 @@ def searchCols(bin_img, col, height):
             start = None
     return intervals
 
-def findOldPos(intervals, prev_old_pos):
+def findOldPos(intervals, prev_old_pos, w, h):
     p_old_x = prev_old_pos[0]
     p_old_y = prev_old_pos[1]
     min_dist = 2e9
-    old_pos = None
+    old_pos = (w//2, h-1)
     
     # find the midpoint closest to the previous old pos to be the new old pos
     for interval in intervals:
         mid_x = interval.midpoint_x
         mid_y = interval.midpoint_y
+        if mid_y == 0:
+            continue
         dist = math.sqrt((mid_x-p_old_x)**2 + (mid_y-p_old_y)**2)
+
         
         if dist < min_dist:
             old_pos = (mid_x, mid_y)
             min_dist = dist
             
     for interval in intervals:
-        if old_pos is not None and interval.midpoint_x == old_pos[0] and interval.midpoint_y == old_pos[1]:
+        if interval.midpoint_x == old_pos[0] and interval.midpoint_y == old_pos[1]:
             intervals.remove(interval)
             break
     return old_pos, intervals
 
-def determineDestinationPoint(candidates, robot_pos, robot_orientation, display_img, old_pos):
+def determineDestinationPoint(candidates, robot_pos, robot_orientation, old_pos):
     min_diff = 2e9
     destination_pxl = None
-    destination_angle = None
     for pixel in candidates:
         angle = calcAngleWithHorizontal(robot_pos, pixel)
         diff = abs(angle - robot_orientation)
@@ -119,9 +118,6 @@ def determineDestinationPoint(candidates, robot_pos, robot_orientation, display_
         if diff < min_diff:
             destination_pxl = pixel
             min_diff = diff
-            destination_angle = angle
     
-    cv2.line(display_img, robot_pos, destination_pxl, (0,0,255), 10)
-    cv2.putText(display_img, str(destination_angle)[0:6]+" deg", (robot_pos[0]+45, robot_pos[1]-70), cv2.FONT_HERSHEY_SIMPLEX, 1.25, (128,0,128), 5, cv2.LINE_AA)
-    return (destination_pxl, destination_angle)
+    return destination_pxl
     
