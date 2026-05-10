@@ -77,7 +77,7 @@ def makeUTurn(initial_uturn_complete, w, h, frame_binary, black_pixels, frame): 
     total_screen_pixels = w * h
     if intervals is not None and len(intervals) >= 2 and len(black_pixels) >= 0.2*total_screen_pixels:
         lineCenter = findRobotPos(black_pixels)
-        old_pos, _ = findOldPos(intervals, old_pos)
+        old_pos, _ = findOldPos(intervals, old_pos, w, h)
         candidates = getCandidates(intervals)
         orientationAngle = calcAngleWithHorizontal(old_pos, lineCenter)
         destination_pxl = determineDestinationPoint(candidates, lineCenter, orientationAngle, old_pos)

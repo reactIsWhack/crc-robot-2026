@@ -52,6 +52,7 @@ robot_pos = (int(width/2), int(height/2))
 # memory
 line_follow_state = "normal"
 initial_uturn_complete = False
+uturn_stepfwd = False
 
 ##################################################################################
 # Calibration
@@ -90,9 +91,11 @@ sleep(1)
 
 try:
     while True:
+        print(f"line follow state = {line_follow_state}")
         ### Get images from camera ###
         frame, hsv = captureFrame(picam)
         frame_binary, black_pixels = getBinaryFrame(hsv, lower_black, upper_black)
+        black_pixels = black_pixels if black_pixels is not None else []
 
         # Create green square mask
         mask = cv2.inRange(hsv, lower_green, upper_green)
@@ -101,9 +104,11 @@ try:
         greenPresent = True if non_zero_pixels is not None else False
 
         if line_follow_state == "U-turn":
-            if greenPresent:
+            if len(black_pixels) > 0.1*(width*height) and uturn_stepfwd:
                 moveRobotFwdOrBwd(base_speed, "fwd")
             else:
+                uturn_stepfwd = False
+                # stopRobot()
                 old_pos, line_follow_state, initial_uturn_complete = makeUTurn(initial_uturn_complete, width, height, frame_binary, black_pixels, frame)
                 renderRobotMap(frame, "Robot Map Regular")
                 cv2.waitKey(1)
@@ -114,9 +119,18 @@ try:
         approaching_green = False
 
         # get intervals + old pos
-        robot_pos = findRobotPos(black_pixels)
         intervals = collectOuterIntervals(frame_binary, width, height)
-        old_pos, intervals = findOldPos(intervals, old_pos, width, height)
+        old_pos, intervals = findOldPos(intervals, old_pos, width, height) # the new intervals array is the same as the original one, except the interval containing old pos is removed
+
+        if line_follow_state == "gap":
+            if len(intervals) == 0:                
+                moveRobotFwdOrBwd(base_speed, "fwd")
+                renderRobotMap(frame, "Robot Map Regular")
+                continue
+            else:
+                line_follow_state = "normal"
+        
+        robot_pos = findRobotPos(black_pixels)
         old_pos_idx = image_border.index(old_pos)
 
         # Old orientation is the angle between the line from the old robot pos to the curr robot pos and the horizontal, measured counterclockwise from the horizontal. 
@@ -127,19 +141,16 @@ try:
         # The one with the angle closest to the old orientation should be considered the destination point
         candidates = getCandidates(intervals)
 
-        print(f"line follow state = {line_follow_state}, green present={greenPresent}")
         if greenPresent and line_follow_state != "U-turn":
-            # square_groups = organizeGreenSquarePoints(mask, non_zero_pixels, frame, height, width)
             edges = cv2.Canny(mask, 100,200)
             green_square_lines = findGreenSquareLines(frame, edges)
             if len(green_square_lines) != 0:
                 centroids = computeCentroids(mask)
                 fwd_angle = findFwdAngle(green_square_lines, height, width, old_pos[0])
-                print(f"fwd angle={fwd_angle}")
                 green_square_states, line_follow_state = updateStateOnGreenSquares(centroids, fwd_angle, frame_binary, width, height, frame, line_follow_state, len(candidates))
+                print(f"line follow state after green square analysis: {line_follow_state}")
             approaching_green = line_follow_state == "normal"
         if line_follow_state == "normal" or line_follow_state == "regular-turn":
-            cv2.line(frame, (width//2, height-1), robot_pos, (255,0,255), 10)
             drawCandidatePoints(frame, candidates)
             destination_pxl = determineDestinationPoint(candidates, robot_pos, old_orientation, old_pos)
         elif line_follow_state == "green-square-turnleft":
@@ -147,12 +158,14 @@ try:
         elif line_follow_state == "green-square-turnright":
             destination_pxl = exploreImageBorderCounterClockwise(old_pos_idx, candidates, image_border)
         elif line_follow_state == "U-turn":
-            continue
+            uturn_stepfwd = True
+            continue            
             
-        if destination_pxl is None:
-            handleLostLine(base_speed, frame_binary, width, height, 0 if black_pixels is None else len(black_pixels), line_follow_threshold)
+        if destination_pxl is None and (line_follow_state == "normal" or line_follow_state == "gap" or line_follow_state == "regular-turn"):
+            line_follow_state = "gap"
             renderRobotMap(frame, "Robot Map Regular")
             continue
+            # handleLostLine(base_speed, frame_binary, width, height, 0 if black_pixels is None else len(black_pixels), line_follow_threshold)
 
         destination_angle = calcAngleWithHorizontal((width//2, height//2), destination_pxl) if destination_pxl is not None else None
         ### Drawings ###
@@ -162,8 +175,8 @@ try:
         cv2.imshow("Binary mask", frame_binary) # frame with line isoalted
         renderRobotMap(frame, "Robot Map Regular")
 
-        # print(f"destination angle={destination_angle}")
         new_base_speed = 13 if approaching_green else base_speed
+        print(f"base speed={new_base_speed}")
         line_follow_state, old_pos = moveToDestinationPoint(destination_angle, line_follow_state, new_base_speed, robot_pos[0], (old_pos, width, height))
 
         if cv2.waitKey(1) == ord('q'):
