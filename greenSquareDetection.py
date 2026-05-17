@@ -7,7 +7,7 @@ from tools.utilities import atImageBoundrary, checkInRange, calcAngleWithHorizon
 colors = [(255,0,0), (0,75,150), (0,165,255),(0,0,0)]
 distance = 5
 black_threshold = 5 # number of times we see have to see black before changing direction
-max_dist_traveled = 250
+max_dist_traveled = 280
 
 def computeCentroids(mask):
     # find the seperate blobs of white pixels on the green square mask. labels = blobs
@@ -198,42 +198,40 @@ def moveLeft(initial_coords, angle, leftDone, w, h, frame):
         cv2.circle(frame, final_coords, 10, (255,255,255), -1)
     return (final_coords[0], final_coords[1], leftDone)
 
-def identifyGreenSquarePosition(centroid, fwd_angle, binary_frame, w, h, frame):
+def identifyGreenSquarePosition(centroid, fwd_angle, binary_frame, w, h, frame, green_mask):
     leftDone = rightDone = fwdDone = bwdDone = False
     lpos_x = rpos_x = fpos_x = bpos_x = centroid[0]
     lpos_y = rpos_y = fpos_y = bpos_y = centroid[1]
     bwd = fwd = left = right = False
+    left_cnt = right_cnt = fwd_cnt = bwd_cnt = 0
     total_dist_traveled = 0
-    while (not leftDone or not rightDone or not fwdDone or not bwdDone) and total_dist_traveled < max_dist_traveled:
+    while total_dist_traveled < max_dist_traveled:
         fpos_x, fpos_y, fwdDone = moveFwd((fpos_x, fpos_y), math.radians(fwd_angle),fwdDone, w, h, frame)
         bpos_x, bpos_y, bwdDone = moveBwd((bpos_x, bpos_y), math.radians(fwd_angle),bwdDone, w, h, frame)
         lpos_x, lpos_y, leftDone = moveLeft((lpos_x, lpos_y), math.radians(90-fwd_angle),leftDone, w, h, frame)
         rpos_x, rpos_y, rightDone = moveRight((rpos_x, rpos_y), math.radians(90-fwd_angle),rightDone, w, h, frame)
-        if not fwdDone and binary_frame[fpos_y][fpos_x] == 0:
-            fwd = True
-            fwdDone = True
-        if not bwdDone and binary_frame[bpos_y][bpos_x] == 0:
-            bwd = True
-            bwdDone = True
-        if not leftDone and binary_frame[lpos_y][lpos_x] == 0:
-            left = leftDone = True
-        if not rightDone and binary_frame[rpos_y][rpos_x] == 0:
-            right = rightDone = True
+        if not fwdDone and binary_frame[fpos_y][fpos_x] == 0 and green_mask[fpos_y][fpos_x] == 0:
+            fwd_cnt += 1
+        if not bwdDone and binary_frame[bpos_y][bpos_x] == 0 and green_mask[bpos_y][bpos_x] == 0:
+            bwd_cnt += 1
+        if not leftDone and binary_frame[lpos_y][lpos_x] == 0 and green_mask[lpos_y][lpos_x] == 0:
+            left_cnt += 1
+        if not rightDone and binary_frame[rpos_y][rpos_x] == 0 and green_mask[rpos_y][rpos_x] == 0:
+            right_cnt += 1
         total_dist_traveled += distance
-    # left, right, fwd, bwd
-    boolean = (left, right, fwd, bwd)
-    # print(f"left found={left}, right found={right}, top found={fwd}, bottom found={bwd}")
-    boolean_to_pos = {(True, False, True, False):"BR",
-                     (True, False, False, True):"TR",
-                     (False, True, True, False):"BL",
-                     (False, True, False, True):"TL"
-                     }
     position = None
-    if boolean in boolean_to_pos.keys():
-        position = boolean_to_pos[boolean]
+    print(f"left={left_cnt}, right={right_cnt}, fwd={fwd_cnt}, bwd={bwd_cnt}")
+    if left_cnt > right_cnt and (fwd_cnt > bwd_cnt or bwd_cnt == 0):
+        position = "BR"
+    elif right_cnt > left_cnt or (fwd_cnt > bwd_cnt or bwd_cnt == 0):
+        position = "BL"
+    elif right_cnt > left_cnt or (bwd_cnt > fwd_cnt or fwd_cnt == 0):
+        position = "TL"
+    elif left_cnt > right_cnt or (bwd_cnt > fwd_cnt or fwd_cnt == 0):
+        position = "TR"
     return position
 
-def updateStateOnGreenSquares(centroids, fwd_angle, binary_frame, w, h, frame, lineFollowState, num_candidates):
+def updateStateOnGreenSquares(centroids, fwd_angle, binary_frame, w, h, frame, lineFollowState, green_mask):
     greenSquareStates = {
         "BR": False,
         "BL": False,
@@ -241,19 +239,22 @@ def updateStateOnGreenSquares(centroids, fwd_angle, binary_frame, w, h, frame, l
         "TL": False
     }
     for centroid in centroids:
-        centroid_type = identifyGreenSquarePosition(centroid, fwd_angle, binary_frame, w, h, frame)
+        centroid_type = identifyGreenSquarePosition(centroid, fwd_angle, binary_frame, w, h, frame, green_mask)
         # print(f"centroid type = {centroid_type}")
         if centroid_type is not None:
             greenSquareStates[centroid_type] = centroid
     # print(f"green square states={greenSquareStates}")
-    if greenSquareStates["BL"] and greenSquareStates["BR"] and lineFollowState == "normal":
+    if greenSquareStates["BL"] and greenSquareStates["BR"]:
         lineFollowState = "U-turn"
-    elif (greenSquareStates["BL"] or (lineFollowState == "green-square-turnleft" and greenSquareStates["TL"])) and num_candidates >= 2:
+    elif (greenSquareStates["BL"] or (lineFollowState == "green-square-turnleft" and greenSquareStates["TL"])):
         lineFollowState = "green-square-turnleft"
-    elif (greenSquareStates["BR"] or (lineFollowState == "green-square-turnright" and greenSquareStates["TR"])) and num_candidates >= 2:
+    elif (greenSquareStates["BR"] or (lineFollowState == "green-square-turnright" and greenSquareStates["TR"])):
         lineFollowState = "green-square-turnright"
     else:
-        lineFollowState = "regular-turn" if (lineFollowState == "green-square-turnleft" or lineFollowState == "green-square-turnright" or lineFollowState == "regular-turn") else "normal"
+        if lineFollowState == "green-square-turnleft"  or lineFollowState == "green-square-turnright" or lineFollowState == "regular-turn":
+            lineFollowState = "regular-turn"
+        else:
+            lineFollowState = "normal"
     return greenSquareStates, lineFollowState
 
 def exploreImageBorderClockwise(old_pos_idx, candidates, image_border):

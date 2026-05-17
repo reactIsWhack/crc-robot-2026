@@ -7,12 +7,14 @@ import numpy as np
 from picamera2 import Picamera2
 from greenSquareDetection import computeCentroids, findFwdAngle, findGreenSquareLines, updateStateOnGreenSquares, exploreImageBorderClockwise, exploreImageBorderCounterClockwise
 from searchForDestinationPoint import determineDestinationPoint, findOldPos, collectOuterIntervals
-from navigation import moveToDestinationPoint, findRobotPos, handleLostLine, makeUTurn, moveRobotFwdOrBwd
+from navigation import moveToDestinationPoint, findRobotPos, makeUTurn, moveRobotFwdOrBwd, flipOldPosAndDestination, stopAtRedLine, handleNoDestination, handleTurnLostLine
 from tools.ledRing import turnLedOn, turnLedOff
 from newMotors import stopRobot
 from tools.popup import Popup
-from tools.utilities import drawCandidatePoints, getBinaryFrame, captureFrame, calcAngleWithHorizontal, createOneIndexedBorder, checkInRange, renderRobotMap, drawOnRobotMap, getCandidates
+from tools.utilities import drawCandidatePoints, captureFrame, calcAngleWithHorizontal, createOneIndexedBorder, renderRobotMap, drawOnRobotMap, getCandidates, renderBinaryFrame
+from createBlackLineMask import createMask
 from time import sleep
+from obstacleDetection import detectObstacle
 
 ##################################################################################
 # Initialization
@@ -20,8 +22,8 @@ from time import sleep
 
 ### Camera ###
 picam = Picamera2()
-config = picam.create_preview_configuration(main={"format":"RGB888"})
-picam.start()
+config = picam.create_preview_configuration(main={"format":"BGR888", "size":(640,480)})
+picam.start(config)
 
 ### Initialize GUI ###
 calibrationGUI = Popup()
@@ -45,14 +47,17 @@ image_border = createOneIndexedBorder(width, height)
 old_pos = (width//2,height-1)
 base_speed = 35
 line_follow_threshold = 600
+orientation_error = 10
 
 # place robot on the image at the middle of the line
 robot_pos = (int(width/2), int(height/2))
 
 # memory
-line_follow_state = "normal"
+line_follow_state = "regular-turn"
 initial_uturn_complete = False
 uturn_stepfwd = False
+turnDir = ""
+recoverCounter = 0
 
 ##################################################################################
 # Calibration
@@ -88,27 +93,40 @@ def cleanup():
 # Line follow
 ##################################################################################
 sleep(1)
+consecutive_red = 0
 
 try:
     while True:
+        if consecutive_red == 100:
+            quit()
+        
         print(f"line follow state = {line_follow_state}")
         ### Get images from camera ###
         frame, hsv = captureFrame(picam)
-        frame_binary, black_pixels = getBinaryFrame(hsv, lower_black, upper_black)
-        black_pixels = black_pixels if black_pixels is not None else []
+        frame_binary, black_pixels = createMask(width, height, hsv, frame)
+        consecutive_red = stopAtRedLine(hsv, consecutive_red)
 
+        if consecutive_red > 0:
+            continue
+
+        if line_follow_state == "turn-lost-line":
+            line_follow_state, recoverCounter, turnDir = handleTurnLostLine(frame_binary, width, height, line_follow_state, turnDir, base_speed, recoverCounter)
+            renderRobotMap(frame, "Robot Map Regular")
+            renderBinaryFrame(frame_binary, "Frame Binary")
+            continue
+        
         # Create green square mask
         mask = cv2.inRange(hsv, lower_green, upper_green)
         mask = cv2.GaussianBlur(mask, (5,5), 0)
         non_zero_pixels = cv2.findNonZero(mask)
         greenPresent = True if non_zero_pixels is not None else False
+        renderBinaryFrame(frame_binary, "frame binary")
 
         if line_follow_state == "U-turn":
             if len(black_pixels) > 0.1*(width*height) and uturn_stepfwd:
                 moveRobotFwdOrBwd(base_speed, "fwd")
             else:
                 uturn_stepfwd = False
-                # stopRobot()
                 old_pos, line_follow_state, initial_uturn_complete = makeUTurn(initial_uturn_complete, width, height, frame_binary, black_pixels, frame)
                 renderRobotMap(frame, "Robot Map Regular")
                 cv2.waitKey(1)
@@ -119,8 +137,9 @@ try:
         approaching_green = False
 
         # get intervals + old pos
-        intervals = collectOuterIntervals(frame_binary, width, height)
+        intervals = collectOuterIntervals(frame_binary, width, height, line_follow_state, image_border)
         old_pos, intervals = findOldPos(intervals, old_pos, width, height) # the new intervals array is the same as the original one, except the interval containing old pos is removed
+        cv2.circle(frame, old_pos, 10, (255,0,0), -1)
 
         if line_follow_state == "gap":
             if len(intervals) == 0:                
@@ -130,12 +149,11 @@ try:
             else:
                 line_follow_state = "normal"
         
-        robot_pos = findRobotPos(black_pixels)
+        robot_pos = findRobotPos(black_pixels, width, height)
         old_pos_idx = image_border.index(old_pos)
 
         # Old orientation is the angle between the line from the old robot pos to the curr robot pos and the horizontal, measured counterclockwise from the horizontal. 
         old_orientation = calcAngleWithHorizontal(old_pos, robot_pos)
-        print(f"old orientation={old_orientation}")
 
         # Each average pixel is a candidate for the destination point of the robot. 
         # The one with the angle closest to the old orientation should be considered the destination point
@@ -147,9 +165,9 @@ try:
             if len(green_square_lines) != 0:
                 centroids = computeCentroids(mask)
                 fwd_angle = findFwdAngle(green_square_lines, height, width, old_pos[0])
-                green_square_states, line_follow_state = updateStateOnGreenSquares(centroids, fwd_angle, frame_binary, width, height, frame, line_follow_state, len(candidates))
+                green_square_states, line_follow_state = updateStateOnGreenSquares(centroids, fwd_angle, frame_binary, width, height, frame, line_follow_state, mask)
                 print(f"line follow state after green square analysis: {line_follow_state}")
-            approaching_green = line_follow_state == "normal"
+            approaching_green = line_follow_state == "normal" or line_follow_state == "regular-turn"
         if line_follow_state == "normal" or line_follow_state == "regular-turn":
             drawCandidatePoints(frame, candidates)
             destination_pxl = determineDestinationPoint(candidates, robot_pos, old_orientation, old_pos)
@@ -159,25 +177,25 @@ try:
             destination_pxl = exploreImageBorderCounterClockwise(old_pos_idx, candidates, image_border)
         elif line_follow_state == "U-turn":
             uturn_stepfwd = True
-            continue            
-            
-        if destination_pxl is None and (line_follow_state == "normal" or line_follow_state == "gap" or line_follow_state == "regular-turn"):
-            line_follow_state = "gap"
+            continue
+        elif line_follow_state == "obstacle":
+            pass
+
+        if destination_pxl is None:
+            line_follow_state = handleNoDestination(line_follow_state, old_orientation)
             renderRobotMap(frame, "Robot Map Regular")
             continue
-            # handleLostLine(base_speed, frame_binary, width, height, 0 if black_pixels is None else len(black_pixels), line_follow_threshold)
+        old_pos, destination = flipOldPosAndDestination(old_pos, destination_pxl)
 
         destination_angle = calcAngleWithHorizontal((width//2, height//2), destination_pxl) if destination_pxl is not None else None
         ### Drawings ###
         drawOnRobotMap(frame, robot_pos, destination_pxl, old_pos)
 
         ### Showing frames after calculations ###
-        cv2.imshow("Binary mask", frame_binary) # frame with line isoalted
         renderRobotMap(frame, "Robot Map Regular")
 
-        new_base_speed = 13 if approaching_green else base_speed
-        print(f"base speed={new_base_speed}")
-        line_follow_state, old_pos = moveToDestinationPoint(destination_angle, line_follow_state, new_base_speed, robot_pos[0], (old_pos, width, height))
+        new_base_speed = 15 if approaching_green else base_speed
+        line_follow_state, old_pos, turnDir = moveToDestinationPoint(destination_angle, line_follow_state, new_base_speed, robot_pos[0], (old_pos, width, height))
 
         if cv2.waitKey(1) == ord('q'):
             break

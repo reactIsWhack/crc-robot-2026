@@ -98,3 +98,30 @@ def renderRobotMap(robotMap, window_name):
     cv2.moveWindow(window_name, 0, 100)
     cv2.imshow(window_name, robotMap) # Original frame but with calculations
     cv2.waitKey(1)
+
+def renderBinaryFrame(frame_binary, window_name):
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.moveWindow(window_name, 400, 100)
+    cv2.imshow(window_name, frame_binary) 
+    cv2.waitKey(1)
+
+def findIntervalMidpoint(endpoints, image_border):
+    indexes = []
+    for endpoint in endpoints:
+        idx = image_border.index(endpoint)
+        indexes.append(idx)
+    indexes.sort()
+    mid_idx = (indexes[0]+indexes[len(indexes)-1])/2
+    return image_border[int(mid_idx)]
+
+def findIntervalMidpointTL(endpoints, image_border):
+    indexes = []
+    for endpoint in endpoints:
+        idx = image_border.index(endpoint)
+        if idx > len(image_border)/2:
+            idx = idx - len(image_border)
+        indexes.append(idx)
+    indexes.sort()
+    mid_idx = (indexes[0]+indexes[len(indexes)-1])/2
+    mid_idx = mid_idx + len(image_border) if mid_idx < 0 else mid_idx
+    return image_border[int(mid_idx)]

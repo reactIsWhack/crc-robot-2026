@@ -48,7 +48,7 @@ on = True
 off = False
 
 def moveFL(speed, direction):
-    reverse = True
+    reverse = False
     if reverse:
         direction = "bwd" if direction == "fwd" else "fwd"
     if direction == "fwd":
@@ -74,7 +74,7 @@ def moveFR(speed, direction):
     pwmFR.value = speed/100
     
 def moveBL(speed, direction):
-    reverse = False
+    reverse = True
     if reverse:
         direction = "bwd" if direction == "fwd" else "fwd"
     if direction == "fwd":
